@@ -2,6 +2,11 @@ import { ethers } from 'ethers';
 import { useEffect, useState } from 'react';
 import deploy from './deploy';
 import Escrow from './Escrow';
+import EscrowLedger from './artifacts/contracts/EscrowLedger.sol/EscrowLedger';
+import EscrowContractSol from './artifacts/contracts/EscrowLedger.sol/Escrow';
+
+
+const ledgerAddress='0x5fbdb2315678afecb367f032d93f642f64180aa3';
 
 const provider = new ethers.providers.Web3Provider(window.ethereum);
 
@@ -18,19 +23,57 @@ function App() {
   useEffect(() => {
     async function getAccounts() {
       const accounts = await provider.send('eth_requestAccounts', []);
-
       setAccount(accounts[0]);
       setSigner(provider.getSigner());
     }
 
+    async function getEscrows(){
+      const ledgerContract = new ethers.Contract(ledgerAddress, EscrowLedger.abi, provider);
+      const contractAddresses = await ledgerContract.numberOfEscrows();
+      console.log("Total Contracts: ", parseInt(contractAddresses));
+      let escrowList = [];
+
+      for (let i = 0; i<parseInt(contractAddresses); i++){
+        const _address = await ledgerContract.contractList(i);
+        const contract = new ethers.Contract(_address, EscrowContractSol.abi, provider);
+        const _arbiter = await contract.arbiter();
+        const _beneficiary = await contract.beneficiary();
+        provider.getBalance(_address).then((_balance) => {
+          escrowList.push({
+            address: _address,
+            arbiter: _arbiter,
+            beneficiary: _beneficiary,
+            value: _balance.toString(),
+            handleApprove: async () => {
+              contract.on('Approved', () => {
+                document.getElementById(_address).className =
+                  'complete';
+                document.getElementById(_address).innerText =
+                  "✓ It's been approved!";
+              });
+      
+              await approve(contract, signer);
+            },
+          });
+
+        }); 
+     };
+     console.log("escrow List", escrowList);
+      setEscrows(escrowList);    
+    
+    }
+
     getAccounts();
-  }, [account]);
+    getEscrows();
+
+  },[]);
+
 
   async function newContract() {
     const beneficiary = document.getElementById('beneficiary').value;
     const arbiter = document.getElementById('arbiter').value;
-    const value = ethers.BigNumber.from(document.getElementById('wei').value);
-    const escrowContract = await deploy(signer, arbiter, beneficiary, value);
+    const value = ethers.utils.parseUnits(document.getElementById('wei').value,"ether");
+    const escrowContract = await deploy(ledgerAddress,signer, arbiter, beneficiary, value);
 
 
     const escrow = {
@@ -68,7 +111,7 @@ function App() {
         </label>
 
         <label>
-          Deposit Amount (in Wei)
+          Deposit Amount (in Ether)
           <input type="text" id="wei" />
         </label>
 
@@ -87,6 +130,8 @@ function App() {
 
       <div className="existing-contracts">
         <h1> Existing Contracts </h1>
+        total number of contracts: {escrows.length}
+        {console.log("Escrow itself",escrows)}
 
         <div id="container">
           {escrows.map((escrow) => {

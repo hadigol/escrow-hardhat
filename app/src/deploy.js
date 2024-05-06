@@ -1,11 +1,23 @@
 import { ethers } from 'ethers';
-import Escrow from './artifacts/contracts/Escrow.sol/Escrow';
+import EscrowLedger from './artifacts/contracts/EscrowLedger.sol/EscrowLedger';
+import Escrow from './artifacts/contracts/EscrowLedger.sol/Escrow';
 
-export default async function deploy(signer, arbiter, beneficiary, value) {
-  const factory = new ethers.ContractFactory(
-    Escrow.abi,
-    Escrow.bytecode,
-    signer
-  );
-  return factory.deploy(arbiter, beneficiary, { value });
+
+export default async function deploy(ledgerAddress,signer, arbiter, beneficiary, _value) {
+
+  const ledgerContract = new ethers.Contract(ledgerAddress, EscrowLedger.abi, signer);
+
+  let newContract = await ledgerContract.newEscrow(
+    arbiter,
+    beneficiary,
+    {value:_value},
+    );
+
+let tx = await newContract.wait();
+const event = tx.events.find(event => event.event === 'EscrowLaunched');
+console.log("EVENT", event);
+const escrowAddress = event.args._address;
+const escrowContract = new ethers.Contract(escrowAddress, Escrow.abi, signer);
+
+  return escrowContract;
 }
